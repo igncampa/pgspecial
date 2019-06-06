@@ -106,21 +106,27 @@ def list_roles(cur, pattern, verbose):
         return [(None, cur, headers, cur.statusmessage)]
 
 
+# https://github.com/postgres/postgres/blob/b250898c76f3a04421656f1bd8c5c520de02046d/src/bin/psql/describe.c#L217
 @special_command('\\db', '\\db[+] [pattern]', 'List tablespaces.')
-def list_tablespaces(cur, pattern, **_):
+def list_tablespaces(cur, pattern, verbose):
     """
     Returns (title, rows, headers, status)
     """
 
-    cur.execute("SELECT EXISTS(SELECT * FROM pg_proc WHERE proname = 'pg_tablespace_location')")
-    (is_location,) = cur.fetchone()
+    if cur.connection.server_version >= 90200:
+        sql = '''
+            SELECT n.spcname AS "Name",
+                pg_catalog.pg_get_userbyid(n.spcowner) AS "Owner",
+                pg_catalog.pg_tablespace_location(oid) AS "Location"
+        '''
+    else:
+        sql = '''
+            SELECT n.spcname AS "Name",
+                pg_catalog.pg_get_userbyid(n.spcowner) AS "Owner",
+                spclocation AS "Location"
+        '''
 
-    sql = '''SELECT n.spcname AS "Name",
-    pg_catalog.pg_get_userbyid(n.spcowner) AS "Owner",'''
-
-    sql += " pg_catalog.pg_tablespace_location(n.oid)" if is_location else " 'Not supported'"
-    sql += ''' AS "Location"
-    FROM pg_catalog.pg_tablespace n'''
+    sql += ''' FROM pg_catalog.pg_tablespace n'''
 
     params = []
     if pattern:
